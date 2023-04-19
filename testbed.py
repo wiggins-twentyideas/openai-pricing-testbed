@@ -7,7 +7,7 @@ import json
 from prompt_toolkit import prompt
 
 
-openai.api_key = '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'
+openai.api_key_path = 'openai_api_key'
 
 _initial_usage = {
     "completion_tokens": 0,

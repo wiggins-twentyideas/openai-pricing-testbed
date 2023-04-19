@@ -9,6 +9,10 @@ source ../env-chatgpt3-testbed/bin/activate
 pip install -r requirements.txt
 ```
 
+# openai api key
+
+save your openap api key to a file named 'openai_api_key'
+
 # run script
 ```
 python testbed.py
