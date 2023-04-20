@@ -2,6 +2,8 @@ import openai
 import pprint
 import sys
 import json
+import time
+import itertools
 
 
 from prompt_toolkit import prompt
@@ -24,6 +26,8 @@ class TestBedApp:
 	usage = _initial_usage
 	debug = False
 	token_price = 0.002/1000.0 # $0.002 per 1,000 tokens
+	secs_between_converse = 20  # throttle to 3 requests/min
+	user_content_count = 0
 
 	def main(self, args):
 		self.cmd_help("help","")
@@ -34,8 +38,12 @@ class TestBedApp:
 		return self.usage["total_tokens"] * self.token_price
 
 	def prompt_string(self):
-		return "\n\n(${:0.6f}) (messages:{msg}) (completion_tokens:{cmpl}) (prompt_tokens:{prompt}) (total_tokens:{total})\n?> ".format(
+		return "{}\n?> ".format(self.usage_string())
+
+	def usage_string(self):
+		return "\n\n(${:0.6f}) (submitted:{submitted}) (messages:{msg}) (completion_tokens:{cmpl}) (prompt_tokens:{prompt}) (total_tokens:{total})".format(
 			self.usage_cost(),
+			submitted=self.user_content_count,
 			msg=len(self.messages),
 			cmpl=self.usage['completion_tokens'],
 			prompt=self.usage['prompt_tokens'],
@@ -65,6 +73,7 @@ class TestBedApp:
 
 
 	def append_user_content(self, content):
+		self.user_content_count += 1 
 		self.messages.append({
 			"role": "user",
 			"content": content
@@ -93,7 +102,7 @@ class TestBedApp:
 		self.usage['total_tokens'] += response.usage.total_tokens
 
 		choice = response.choices[0]
-		print("{}\n".format(choice.message.content))
+		print("\n<<<[ {}]\n".format(choice.message.content))
 		self.messages.append(choice.message)
 
 	def quit(self):
@@ -106,6 +115,8 @@ class TestBedApp:
 	def cmd_reset(self, cmd, args):
 		self.usage = _initial_usage
 		self.messages = []
+		self.user_content_count = 0
+		self.responses = []
 
 	def cmd_system(self, cmd, content):
 		self.messages.append({
@@ -134,6 +145,36 @@ class TestBedApp:
 			}))
 		print("Session saved to {}".format(filename))
 
+	def cmd_converse(self, cmd, args):
+		try:
+			filename, count = args.split(" ", 1)
+			count = int(count)
+		except ValueError:
+			filename = args
+			count = 0
+
+		if not filename:
+			return print("Usage: /converse <filename> [count]\n")
+
+		with open(filename, 'r') as fh:
+			lines = fh.readlines()
+			if count > 0:
+				#fill an array with enough copies of the file to have at least count messages
+				n = int(count / len(lines))
+				lines = list(itertools.chain(*itertools.repeat(lines, n)))
+
+
+			for line in lines:
+				if len(line.strip()) < 1:
+					continue
+				print("\n>>>[{}\n]".format(line))
+				self.append_user_content(line)
+				print(self.usage_string())
+				if len(lines):
+					print(" -- throttling...\n")
+					time.sleep(self.secs_between_converse)
+
+
 	def cmd_help(self, cmd, args):
 		print(
 			f"/quit\n"
@@ -142,6 +183,7 @@ class TestBedApp:
 			f"/messages - prints session messages\n"
 			f"/responses - prints session responses\n"
 			f"/save <filename.json> - dump session to json file\n"
+			f"/converse <filename> [count] - simulate a session sending random number of lines from file\n"
 			f"/help\n"
 		)
 
